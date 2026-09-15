@@ -202,6 +202,14 @@ The loop is implemented by `repo-improver` itself; it does not require Codex aut
 
 The loop continues after a rejected patch, failed test, or other guarded error, leaving the repository unchanged for that iteration. Stop it at any time with `Ctrl+C`.
 
+Use `--forever` instead of `--loop --iterations 7` to keep the Python process running until interrupted.
+
+## Releases
+
+The project uses Conventional Commits for future agent-generated changes. `feat:` creates a minor release, `fix:`, `perf:`, `refactor:`, and `revert:` create a patch release, and `!` or `BREAKING CHANGE:` creates a major release. Existing historical commits are intentionally left unchanged.
+
+The `Daily release` workflow runs at 06:00 UTC every day. It considers Conventional Commits since the most recent tag, updates `pyproject.toml` and `CHANGELOG.md`, creates a `chore(release): vX.Y.Z` commit, tags it, and publishes a GitHub Release. It will publish at most one release per UTC day, even if manually triggered more than once.
+
 ## Project structure
 
 ```text
