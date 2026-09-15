@@ -12,6 +12,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .ollama_client import ChatClient, OllamaClient
 
@@ -32,10 +33,17 @@ class ImprovementResult:
 class RepositoryImprover:
     """Research -> patch -> review -> optional guarded Git publication."""
 
-    def __init__(self, client: ChatClient, repository: Path, output_dir: Path) -> None:
+    def __init__(
+        self,
+        client: ChatClient,
+        repository: Path,
+        output_dir: Path,
+        progress: Callable[[str], None] | None = None,
+    ) -> None:
         self.client = client
         self.repository = repository.resolve()
         self.output_dir = output_dir
+        self.progress = progress or (lambda _: None)
 
     def run(
         self,
@@ -53,6 +61,7 @@ class RepositoryImprover:
 
         run_dir = self._create_run_directory()
         inventory = self._inventory()
+        self.progress("1/3 Researching the repository...")
         research = self.client.chat(
             system=(
                 "You are a software architecture researcher. Inspect the repository inventory "
@@ -64,10 +73,18 @@ class RepositoryImprover:
         )
         self._write(run_dir, "research.md", research)
 
+        self.progress("2/3 Generating a minimal patch...")
         patch = self._create_patch(goal, inventory, research)
-        self._validate_patch(patch)
+        self._write(run_dir, "developer_response.txt", patch)
+        try:
+            self._validate_patch(patch)
+        except ValueError:
+            self.progress("Repairing the patch format...")
+            patch = self._repair_patch(goal, research, patch)
+            self._validate_patch(patch)
         self._write(run_dir, "proposed.patch", patch)
 
+        self.progress("3/3 Reviewing the proposed patch...")
         review = self.client.chat(
             system=(
                 "You are a strict code reviewer. Review the proposed unified diff against the "
@@ -106,6 +123,20 @@ class RepositoryImprover:
                 "optionally inside a ```diff fence."
             ),
             user=f"Goal: {goal}\n\nInventory:\n{inventory}\n\nResearch:\n{research}",
+        )
+        match = re.search(r"```(?:diff|patch)?\s*(.*?)```", response, re.DOTALL)
+        return (match.group(1) if match else response).strip() + "\n"
+
+    def _repair_patch(self, goal: str, research: str, invalid_response: str) -> str:
+        response = self.client.chat(
+            system=(
+                "You are a patch-format repairer. Convert the developer response into ONE complete "
+                "unified Git diff. Return only the diff: its first line MUST begin `diff --git a/`. "
+                "You may modify only src/, tests/, README.md, and pyproject.toml. Do not explain "
+                "your answer and do not use Markdown fences."
+            ),
+            user=(f"Goal: {goal}\n\nResearch:\n{research}\n\n"
+                  f"Developer response to repair:\n{invalid_response}"),
         )
         match = re.search(r"```(?:diff|patch)?\s*(.*?)```", response, re.DOTALL)
         return (match.group(1) if match else response).strip() + "\n"
@@ -168,7 +199,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    result = RepositoryImprover(OllamaClient(args.model), args.repo, args.runs_dir).run(
+    result = RepositoryImprover(OllamaClient(args.model), args.repo, args.runs_dir, print).run(
         args.goal, apply=args.apply, commit=args.commit, push=args.push, test_command=args.test_command
     )
     print(f"Audit artifacts: {result.run_directory}")
