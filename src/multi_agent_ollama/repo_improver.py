@@ -243,7 +243,7 @@ def main() -> None:
             print(f"Iteration {iteration} made no changes: {error}", flush=True)
         if total is None or iteration < total:
             print(f"Waiting {args.interval_minutes} minutes before the next iteration...", flush=True)
-            time.sleep(args.interval_minutes * 60)
+            time.sleep(args.interval_minutes * 1)
         iteration += 1
 
 
