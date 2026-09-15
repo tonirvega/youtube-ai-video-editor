@@ -80,8 +80,19 @@ class RepositoryImprover:
             self._validate_patch(patch)
         except ValueError:
             self.progress("Repairing the patch format...")
-            patch = self._repair_patch(goal, research, patch)
+            patch = self._repair_patch(goal, inventory, research, patch, "The response was not a unified Git diff.")
             self._validate_patch(patch)
+        try:
+            self._git("apply", "--check", input_text=patch)
+        except subprocess.CalledProcessError as error:
+            self._write(run_dir, "patch_check_error.txt", error.stderr or error.stdout)
+            self.progress("Repairing a patch that does not apply...")
+            patch = self._repair_patch(
+                goal, inventory, research, patch,
+                f"Git rejected the patch with: {error.stderr or error.stdout}",
+            )
+            self._validate_patch(patch)
+            self._git("apply", "--check", input_text=patch)
         self._write(run_dir, "proposed.patch", patch)
 
         self.progress("3/3 Reviewing the proposed patch...")
@@ -127,7 +138,9 @@ class RepositoryImprover:
         match = re.search(r"```(?:diff|patch)?\s*(.*?)```", response, re.DOTALL)
         return (match.group(1) if match else response).strip() + "\n"
 
-    def _repair_patch(self, goal: str, research: str, invalid_response: str) -> str:
+    def _repair_patch(
+        self, goal: str, inventory: str, research: str, invalid_response: str, failure_reason: str
+    ) -> str:
         response = self.client.chat(
             system=(
                 "You are a patch-format repairer. Convert the developer response into ONE complete "
@@ -135,8 +148,9 @@ class RepositoryImprover:
                 "You may modify only src/, tests/, README.md, and pyproject.toml. Do not explain "
                 "your answer and do not use Markdown fences."
             ),
-            user=(f"Goal: {goal}\n\nResearch:\n{research}\n\n"
-                  f"Developer response to repair:\n{invalid_response}"),
+            user=(f"Goal: {goal}\n\nFailure reason:\n{failure_reason}\n\n"
+                  f"Repository inventory (use only these files):\n{inventory}\n\n"
+                  f"Research:\n{research}\n\nDeveloper response to repair:\n{invalid_response}"),
         )
         match = re.search(r"```(?:diff|patch)?\s*(.*?)```", response, re.DOTALL)
         return (match.group(1) if match else response).strip() + "\n"

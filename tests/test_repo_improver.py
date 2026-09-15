@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from subprocess import CalledProcessError, CompletedProcess
 
 from multi_agent_ollama.repo_improver import RepositoryImprover
 
@@ -30,6 +31,7 @@ class RepositoryImproverTests(unittest.TestCase):
             (root / ".git").mkdir()
             (root / "README.md").write_text("Old", encoding="utf-8")
             workflow = RepositoryImprover(FakeClient(), root, root / "runs")
+            workflow._git = lambda *args, **kwargs: CompletedProcess(args, 0, "", "")
             result = workflow.run("Improve documentation")
 
             self.assertFalse(result.applied)
@@ -49,7 +51,33 @@ class RepositoryImproverTests(unittest.TestCase):
             root = Path(temporary)
             (root / ".git").mkdir()
             (root / "README.md").write_text("Old", encoding="utf-8")
-            result = RepositoryImprover(client, root, root / "runs").run("Improve documentation")
+            workflow = RepositoryImprover(client, root, root / "runs")
+            workflow._git = lambda *args, **kwargs: CompletedProcess(args, 0, "", "")
+            result = workflow.run("Improve documentation")
 
             self.assertEqual(result.patch, PATCH)
             self.assertTrue((result.run_directory / "developer_response.txt").exists())
+
+    def test_patch_that_cannot_apply_is_repaired(self):
+        invalid_but_well_formed = PATCH.replace("README.md", "src/missing.py")
+        client = FakeClient(["Research", invalid_but_well_formed, PATCH, "DECISION: APPROVED"])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".git").mkdir()
+            (root / "README.md").write_text("Old", encoding="utf-8")
+            workflow = RepositoryImprover(client, root, root / "runs")
+            attempts = 0
+
+            def git_check(*args, **kwargs):
+                nonlocal attempts
+                if args[:2] == ("apply", "--check"):
+                    attempts += 1
+                    if attempts == 1:
+                        raise CalledProcessError(1, args, "", "error: missing file")
+                return CompletedProcess(args, 0, "", "")
+
+            workflow._git = git_check
+            result = workflow.run("Improve documentation")
+
+            self.assertEqual(result.patch, PATCH)
+            self.assertTrue((result.run_directory / "patch_check_error.txt").exists())
