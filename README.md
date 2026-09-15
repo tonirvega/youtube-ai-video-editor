@@ -126,6 +126,33 @@ To verify the command-line interface:
 python -m multi_agent_ollama --help
 ```
 
+## Docker
+
+The image includes Python, the project package, FFmpeg, and FFprobe. Build and run the test target locally:
+
+```powershell
+docker build --target test --tag youtube-ai-video-editor:test .
+docker run --rm youtube-ai-video-editor:test
+```
+
+Build the runtime image to generate a plan or render a video. Mount a working directory containing the source video and timestamped transcript. Ollama is expected to be reachable from the container; set `OLLAMA_HOST` when it runs outside the container.
+
+```powershell
+docker build --target runtime --tag youtube-ai-video-editor:latest .
+docker run --rm -it --mount type=bind,source="${PWD}",target=/work `
+  --env OLLAMA_HOST="http://host.docker.internal:11434" `
+  --env YOUTUBE_API_KEY `
+  youtube-ai-video-editor:latest `
+  --video /work/source.mp4 --transcript /work/transcript.txt `
+  --topic "automatic video editing" --output /work/output/edited-video.mp4 --dry-run
+```
+
+`YOUTUBE_API_KEY` is optional. Do not build it into an image or commit it. The Docker target used in CI contains no credentials and runs only the offline test suite.
+
+## Continuous integration
+
+GitHub Actions runs on every push to `master`, pull request, or manual dispatch. It executes the unit tests twice: once using Python directly and once inside the Docker test image.
+
 ## Project structure
 
 ```text
