@@ -22,6 +22,40 @@ There is no agent framework hiding the flow: the orchestrator retains every deli
 
 Generated artifacts are saved under `runs/<id>/`, so you can inspect exactly what each agent received and produced.
 
+## YouTube video editor workflow
+
+The repository now includes a practical specialization of the agent architecture: a local YouTube video-editor workflow. It takes a source video and a timestamped transcript, then moves work through three focused agents:
+
+```text
+YouTube search data -> Content Strategist -> keyword_research.json + strategy.md
+Strategy + transcript -> Video Editor -> edit_plan_draft.json
+Draft + transcript -> Editor Reviewer -> review.md
+Review feedback -> Video Editor -> edit_plan.json
+Approved edit plan -> FFmpeg -> edited-video.mp4
+```
+
+The planner produces a title, description, tags, chapters, and an ordered list of meaningful video segments. The reviewer can request a revised plan before any video is rendered. FFmpeg then renders the approved segments locally; it never uploads the source video.
+
+### Requirements for video editing
+
+In addition to the base requirements, install FFmpeg and make both `ffmpeg` and `ffprobe` available on `PATH`. Provide a plain-text, timestamped transcript, for example:
+
+```text
+[00:00] Today we compare three automatic video editors.
+[00:18] First, here is the main problem creators face.
+[01:05] This is the recommended workflow.
+```
+
+For live YouTube keyword research, create a YouTube Data API v3 key and supply it through `YOUTUBE_API_KEY`. The key is read only from the environment and is never written to a run artifact, log, or repository. Without a key, the workflow still plans and edits videos but clearly uses an offline research fallback rather than pretending to know current trends.
+
+```powershell
+$env:YOUTUBE_API_KEY = "your-key"
+youtube-video-editor --video .\source.mp4 --transcript .\transcript.txt --topic "automatic video editing" --dry-run
+youtube-video-editor --video .\source.mp4 --transcript .\transcript.txt --topic "automatic video editing" --output .\output\edited-video.mp4
+```
+
+Start with `--dry-run` to review `edit_plan.json`, the proposed title, description, tags, chapters, and the reviewer feedback. Remove it only when you approve the plan. The workflow makes time-based cuts and standardizes video and audio encoding; it does not yet generate subtitles, b-roll, thumbnails, or publish to YouTube.
+
 ## Requirements
 
 - Windows, macOS, or Linux
