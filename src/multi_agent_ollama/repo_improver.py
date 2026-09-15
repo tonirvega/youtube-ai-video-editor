@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -208,16 +209,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--commit", action="store_true", help="Run tests and commit the applied patch")
     parser.add_argument("--push", action="store_true", help="Push the new commit; requires --commit")
     parser.add_argument("--test-command", default="python -m unittest discover -s tests -v", help="Command run before committing")
+    parser.add_argument("--loop", action="store_true", help="Repeat guarded improvement iterations in this Python process")
+    parser.add_argument("--iterations", type=int, default=1, help="Number of iterations when --loop is set")
+    parser.add_argument("--interval-minutes", type=int, default=60, help="Minutes to wait between loop iterations")
+    parser.add_argument("--pull", action="store_true", help="Fast-forward pull before every iteration")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    result = RepositoryImprover(OllamaClient(args.model), args.repo, args.runs_dir, print).run(
-        args.goal, apply=args.apply, commit=args.commit, push=args.push, test_command=args.test_command
-    )
-    print(f"Audit artifacts: {result.run_directory}")
-    print(f"Applied: {result.applied}; committed: {result.committed}; pushed: {result.pushed}")
+    if args.iterations < 1 or args.interval_minutes < 1:
+        raise SystemExit("--iterations and --interval-minutes must be positive.")
+    if args.loop and not (args.apply and args.commit and args.push):
+        raise SystemExit("--loop requires --apply --commit --push.")
+
+    total = args.iterations if args.loop else 1
+    for iteration in range(1, total + 1):
+        print(f"\n=== Improvement iteration {iteration}/{total} ===", flush=True)
+        try:
+            if args.pull:
+                subprocess.run(["git", "pull", "--ff-only"], cwd=args.repo, check=True)
+            result = RepositoryImprover(OllamaClient(args.model), args.repo, args.runs_dir, print).run(
+                args.goal, apply=args.apply, commit=args.commit, push=args.push, test_command=args.test_command
+            )
+            print(f"Audit artifacts: {result.run_directory}")
+            print(f"Applied: {result.applied}; committed: {result.committed}; pushed: {result.pushed}")
+        except (RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"Iteration {iteration} made no changes: {error}", flush=True)
+        if iteration < total:
+            print(f"Waiting {args.interval_minutes} minutes before the next iteration...", flush=True)
+            time.sleep(args.interval_minutes * 60)
 
 
 if __name__ == "__main__":

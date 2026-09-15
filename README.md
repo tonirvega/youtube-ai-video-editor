@@ -190,6 +190,18 @@ repo-improver "Improve the reliability of edit-plan validation" --apply --commit
 
 This command runs the test suite before committing and uses the existing GitHub remote authentication to push. It does not expose or store credentials. The research is limited to the checked-out repository and the model's existing knowledge; add a reviewed web-search provider later if you need current external research.
 
+### Run improvements overnight from Python
+
+The loop is implemented by `repo-improver` itself; it does not require Codex automation or a task scheduler. This example runs seven guarded iterations, one per hour. Each iteration fast-forward pulls the branch, then applies, tests, commits, and pushes only an approved patch that passes `git apply --check`.
+
+```powershell
+.\.venv\Scripts\repo-improver.exe "Make one focused, low-risk reliability improvement to the YouTube editor MVP" `
+  --model qwen2.5-coder:14b --apply --commit --push --pull `
+  --loop --iterations 7 --interval-minutes 60
+```
+
+The loop continues after a rejected patch, failed test, or other guarded error, leaving the repository unchanged for that iteration. Stop it at any time with `Ctrl+C`.
+
 ## Project structure
 
 ```text
