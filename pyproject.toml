@@ -13,6 +13,7 @@ dependencies = ["ollama>=0.4.0"]
 [project.scripts]
 multi-agent-ollama = "multi_agent_ollama.main:main"
 youtube-video-editor = "multi_agent_ollama.youtube_editor:main"
+repo-improver = "multi_agent_ollama.repo_improver:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -153,6 +153,43 @@ docker run --rm -it --mount type=bind,source="${PWD}",target=/work `
 
 GitHub Actions runs on every push to `master`, pull request, or manual dispatch. It executes the unit tests twice: once using Python directly and once inside the Docker test image.
 
+## Repository improvement agents
+
+`repo-improver` is a separate, guarded workflow that uses the same three-agent pattern to improve this codebase:
+
+```text
+Repository inventory -> Architecture Researcher -> research.md
+Research + inventory -> Developer -> proposed.patch
+Patch + research -> Reviewer -> review.md
+Approved patch -> optional git apply -> optional test + commit -> optional push
+```
+
+It is read-only by default. Every run stores the research, exact patch, and review under `runs/improvements/`. The developer is restricted to `src/`, `tests/`, `README.md`, and `pyproject.toml`; it cannot alter workflows, Docker configuration, dependencies, credentials, or Git configuration. A dirty working tree is rejected before any mutation.
+
+First install the package and start Ollama with a local model:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e .
+ollama pull qwen3:8b
+ollama serve
+```
+
+In a second PowerShell window, change into the repository and begin with a read-only proposal:
+
+```powershell
+repo-improver "Improve the reliability of edit-plan validation"
+```
+
+Review `runs/improvements/<timestamp>/research.md`, `proposed.patch`, and `review.md`. When you approve the result, run one new improvement with explicit publication permissions:
+
+```powershell
+repo-improver "Improve the reliability of edit-plan validation" --apply --commit --push
+```
+
+This command runs the test suite before committing and uses the existing GitHub remote authentication to push. It does not expose or store credentials. The research is limited to the checked-out repository and the model's existing knowledge; add a reviewed web-search provider later if you need current external research.
+
 ## Project structure
 
 ```text
